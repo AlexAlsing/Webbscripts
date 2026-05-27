@@ -1,4 +1,1 @@
-Write-Host "Hello from test-fun via GitHub -> Apps Script proxy."
-Write-Host ("Timestamp (UTC): {0}" -f [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"))
-Write-Host ("Current user: {0}" -f $env:USERNAME)
-Write-Host "Everything is wired up correctly."
+Write-Output "Hello World"
