@@ -10,11 +10,11 @@ Single-page dark-mode portal for listing IT convenience scripts, prepared for Go
 
 ## Prerequisites
 
-Install and authenticate `clasp`:
+Install dependencies and authenticate `clasp`:
 
 ```powershell
-npm install -g @google/clasp
-clasp login
+npm install
+npm run clasp:login
 ```
 
 ## Create or Connect the Apps Script Project
@@ -22,16 +22,22 @@ clasp login
 From this project folder, create a new standalone Apps Script project:
 
 ```powershell
-clasp create --type standalone --title "IT Convenience Scripts"
+npm run clasp:create
 ```
 
 Or connect to an existing Apps Script project:
 
 ```powershell
-clasp clone <SCRIPT_ID>
+npx clasp clone <SCRIPT_ID>
 ```
 
 Replace `<SCRIPT_ID>` with the target Apps Script project ID.
+
+If connecting manually, copy `.clasp.json.example` to `.clasp.json` and replace `PASTE_SCRIPT_ID_HERE` with the Apps Script project ID:
+
+```powershell
+Copy-Item .clasp.json.example .clasp.json
+```
 
 ## Apps Script Entry Point
 
@@ -48,16 +54,18 @@ function doGet() {
 Push local files to Apps Script:
 
 ```powershell
-clasp push
+npm run clasp:push
 ```
 
 Open the Apps Script project in the browser:
 
 ```powershell
-clasp open
+npm run clasp:open
 ```
 
 Deploy from the Apps Script editor when ready.
+
+Only the Apps Script files are pushed by `clasp`: `Code.gs`, `index.html`, and `appsscript.json`. Repository-only files such as `README.md`, `package.json`, and `.gitignore` are excluded by `.claspignore`.
 
 ## Required User-Side Adjustments
 
