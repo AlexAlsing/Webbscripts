@@ -32,50 +32,50 @@
     </header>
 
     <section class="flex-1 space-y-4">
-      <article class="rounded-lg border border-gray-700/70 bg-gray-800/70 p-4 shadow-sm">
+      <article class="rounded-lg border border-gray-700/70 bg-gray-800/70 p-4 shadow-sm" data-slug="crcfix" data-runner="bash">
         <h2 class="mono text-lg font-bold text-sky-400">/crcfix</h2>
         <p class="mt-1 italic text-gray-300">Solves CRC error while downloading from filewave booster servers.</p>
         <div class="mono mt-3 flex items-center justify-between gap-3 rounded-md bg-[#0f1218] px-3 py-2 text-sm">
           <div class="min-w-0 truncate text-gray-200">
-            <span class="break-all">curl -fsSL https://scripts.bonnier.news/crcfix</span>
+            <span class="break-all command-url"></span>
             <span class="mx-2 text-gray-500">|</span>
-            <span class="text-emerald-300">bash</span>
+            <span class="text-emerald-300 command-runner">bash</span>
           </div>
           <div class="ml-2 flex shrink-0 gap-2">
-            <button class="rounded bg-gray-700 px-2 py-1 text-xs text-gray-100 hover:bg-gray-600">Copy</button>
-            <button class="rounded bg-gray-700 px-2 py-1 text-xs text-gray-100 hover:bg-gray-600">View</button>
+            <button class="copy-btn rounded bg-gray-700 px-2 py-1 text-xs text-gray-100 hover:bg-gray-600">Copy</button>
+            <button class="view-btn rounded bg-gray-700 px-2 py-1 text-xs text-gray-100 hover:bg-gray-600">View</button>
           </div>
         </div>
       </article>
 
-      <article class="rounded-lg border border-gray-700/70 bg-gray-800/70 p-4 shadow-sm">
+      <article class="rounded-lg border border-gray-700/70 bg-gray-800/70 p-4 shadow-sm" data-slug="hwinfo" data-runner="bash">
         <h2 class="mono text-lg font-bold text-sky-400">/hwinfo</h2>
         <p class="mt-1 italic text-gray-300">Collects and prints structured hardware inventory details for quick diagnostics.</p>
         <div class="mono mt-3 flex items-center justify-between gap-3 rounded-md bg-[#0f1218] px-3 py-2 text-sm">
           <div class="min-w-0 truncate text-gray-200">
-            <span class="break-all">curl -fsSL https://scripts.bonnier.news/hwinfo</span>
+            <span class="break-all command-url"></span>
             <span class="mx-2 text-gray-500">|</span>
-            <span class="text-emerald-300">bash</span>
+            <span class="text-emerald-300 command-runner">bash</span>
           </div>
           <div class="ml-2 flex shrink-0 gap-2">
-            <button class="rounded bg-gray-700 px-2 py-1 text-xs text-gray-100 hover:bg-gray-600">Copy</button>
-            <button class="rounded bg-gray-700 px-2 py-1 text-xs text-gray-100 hover:bg-gray-600">View</button>
+            <button class="copy-btn rounded bg-gray-700 px-2 py-1 text-xs text-gray-100 hover:bg-gray-600">Copy</button>
+            <button class="view-btn rounded bg-gray-700 px-2 py-1 text-xs text-gray-100 hover:bg-gray-600">View</button>
           </div>
         </div>
       </article>
 
-      <article class="rounded-lg border border-gray-700/70 bg-gray-800/70 p-4 shadow-sm">
+      <article class="rounded-lg border border-gray-700/70 bg-gray-800/70 p-4 shadow-sm" data-slug="oobe-visualizer" data-runner="iex">
         <h2 class="mono text-lg font-bold text-sky-400">/oobe-visualizer</h2>
         <p class="mt-1 italic text-gray-300">Visualizes OOBE progress and key checkpoints during endpoint provisioning.</p>
         <div class="mono mt-3 flex items-center justify-between gap-3 rounded-md bg-[#0f1218] px-3 py-2 text-sm">
           <div class="min-w-0 truncate text-gray-200">
-            <span class="break-all">curl -fsSL https://scripts.bonnier.news/oobe-visualizer</span>
+            <span class="break-all command-url"></span>
             <span class="mx-2 text-gray-500">|</span>
-            <span class="text-emerald-300">iex</span>
+            <span class="text-emerald-300 command-runner">iex</span>
           </div>
           <div class="ml-2 flex shrink-0 gap-2">
-            <button class="rounded bg-gray-700 px-2 py-1 text-xs text-gray-100 hover:bg-gray-600">Copy</button>
-            <button class="rounded bg-gray-700 px-2 py-1 text-xs text-gray-100 hover:bg-gray-600">View</button>
+            <button class="copy-btn rounded bg-gray-700 px-2 py-1 text-xs text-gray-100 hover:bg-gray-600">Copy</button>
+            <button class="view-btn rounded bg-gray-700 px-2 py-1 text-xs text-gray-100 hover:bg-gray-600">View</button>
           </div>
         </div>
       </article>
@@ -98,6 +98,37 @@
     });
 
     document.getElementById('updatedAt').textContent = formatted;
+
+    const appBase = `${window.location.origin}${window.location.pathname}`.replace(/\/$/, '');
+    document.querySelectorAll('article[data-slug]').forEach((article) => {
+      const slug = article.dataset.slug;
+      const runner = article.dataset.runner;
+      const proxyUrl = `${appBase}/${slug}`;
+      const commandPrefix = runner === 'iex' ? 'irm' : 'curl -fsSL';
+      const command = `${commandPrefix} ${proxyUrl} | ${runner}`;
+
+      article.querySelector('.command-url').textContent = `${commandPrefix} ${proxyUrl}`;
+      article.querySelector('.command-runner').textContent = runner;
+
+      const copyButton = article.querySelector('.copy-btn');
+      const viewButton = article.querySelector('.view-btn');
+
+      copyButton.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(command);
+          copyButton.textContent = 'Copied';
+          setTimeout(() => {
+            copyButton.textContent = 'Copy';
+          }, 1000);
+        } catch (error) {
+          console.error(error);
+        }
+      });
+
+      viewButton.addEventListener('click', () => {
+        window.open(proxyUrl, '_blank');
+      });
+    });
   </script>
 </body>
 </html>

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "crcfix placeholder from AlexAlsing/Webbscripts."
+echo "Replace this file with the full crcfix script."
