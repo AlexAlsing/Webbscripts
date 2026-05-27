@@ -42,6 +42,7 @@ function renderIndex_() {
   const catalog = buildScriptCatalog_();
   const template = HtmlService.createTemplateFromFile('index');
   template.scriptCatalogJson = JSON.stringify(catalog);
+  template.webAppBaseUrl = getWebAppBaseUrl_();
   return template.evaluate().setTitle('IT Convenience Scripts');
 }
 
@@ -179,4 +180,12 @@ function normalizeSlug_(fileName) {
 
 function inferRunner_(fileName) {
   return /\.ps1$/i.test(fileName) ? 'iex' : 'bash';
+}
+
+function getWebAppBaseUrl_() {
+  const url = ScriptApp.getService().getUrl();
+  if (!url) {
+    return '';
+  }
+  return String(url).replace(/\/$/, '');
 }

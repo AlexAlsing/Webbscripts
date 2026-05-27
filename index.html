@@ -51,7 +51,9 @@
 
     document.getElementById('updatedAt').textContent = formatted;
 
-    const appBase = `${window.location.origin}${window.location.pathname}`.replace(/\/$/, '');
+    const fallbackBase = `${window.location.origin}${window.location.pathname}`.replace(/\/$/, '');
+    const webAppBase = `<?!= webAppBaseUrl ?>`;
+    const appBase = webAppBase || fallbackBase;
     const scriptCatalog = <?!= scriptCatalogJson ?>;
     const scriptsList = document.getElementById('scriptsList');
 
