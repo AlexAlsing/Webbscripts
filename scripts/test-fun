@@ -1,7 +1,4 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-echo "Hello from test-fun via GitHub -> Apps Script proxy."
-echo "Timestamp (UTC): $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-echo "Current user: $(whoami)"
-echo "Everything is wired up correctly."
+Write-Host "Hello from test-fun via GitHub -> Apps Script proxy."
+Write-Host ("Timestamp (UTC): {0}" -f [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"))
+Write-Host ("Current user: {0}" -f $env:USERNAME)
+Write-Host "Everything is wired up correctly."

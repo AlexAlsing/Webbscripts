@@ -15,7 +15,7 @@ const SCRIPT_CATALOG = {
   },
   'test-fun': {
     description: 'Simple test script that prints a few lines.',
-    runner: 'bash'
+    runner: 'iex'
   }
 };
 
