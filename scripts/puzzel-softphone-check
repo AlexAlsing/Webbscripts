@@ -385,7 +385,7 @@ Write-Section "Status"
 if ($modelHits) {
   Write-Item ("Jabra model: {0}" -f (($modelHits | Select-Object -ExpandProperty Name -Unique) -join '; '))
 } else {
-  Write-Item "Jabra model: none of listed 75 variants detected"
+  Write-Item "Jabra model: no listed Evolve 75 variant currently detected"
 }
 
 if ($bluetoothHits) {
@@ -501,7 +501,7 @@ if ($standardBluetoothHits -and $standardBluetoothHits.Count -gt 0) {
     Write-Item "Bluetooth cleanup skipped"
   }
 } else {
-  Write-Item "Bluetooth cleanup prompt skipped (no standard model on Bluetooth)"
+  # Intentionally silent when not applicable.
 }
 
 $hasJabraLinkEndpoint = $audioEndpoints | Where-Object { $_ -match $linkRegex }
@@ -548,7 +548,7 @@ if ($otherHeadsetSet) {
     Write-Item "Windows default switch skipped"
   }
 } else {
-  Write-Item "Swap prompt skipped (no clear non-Jabra default)"
+  # Intentionally silent when not applicable.
 }
 
 $answerPuzzelSite = Prompt-YesNo -Question 'Do you want to set "Jabra link xxx" as prefered input/output on agent.puzzel.com'
@@ -571,7 +571,7 @@ if ($answerPuzzelSite) {
   }
   Write-Item "Restart Chrome, then verify device in agent.puzzel.com call settings"
 } else {
-  Write-Item "agent.puzzel.com preference update skipped"
+  # Intentionally silent when user declines.
 }
 
 Write-Section "Done"
