@@ -107,14 +107,30 @@ function fetchScriptText_(sourcePath) {
 
 function buildScriptCatalog_() {
   const response = UrlFetchApp.fetch(GITHUB_SCRIPTS_API, {
+    headers: {
+      'User-Agent': 'Webbscripts-AppsScript',
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28'
+    },
     muteHttpExceptions: true,
     followRedirects: true
   });
+
   if (response.getResponseCode() !== 200) {
-    throw new Error('Failed to fetch scripts index from GitHub: HTTP ' + response.getResponseCode());
+    return fallbackCatalog_('GitHub index request failed: HTTP ' + response.getResponseCode());
   }
 
-  const files = JSON.parse(response.getContentText());
+  let files;
+  try {
+    files = JSON.parse(response.getContentText());
+  } catch (error) {
+    return fallbackCatalog_('GitHub index parse failed: ' + error.message);
+  }
+
+  if (!Array.isArray(files)) {
+    return fallbackCatalog_('GitHub index response is not an array.');
+  }
+
   const catalog = {};
 
   files.forEach(function(item) {
@@ -136,6 +152,20 @@ function buildScriptCatalog_() {
     };
   });
 
+  return catalog;
+}
+
+function fallbackCatalog_(reason) {
+  console.warn(reason);
+  const catalog = {};
+  Object.keys(SCRIPT_OVERRIDES).forEach(function(slug) {
+    const override = SCRIPT_OVERRIDES[slug];
+    catalog[slug] = {
+      description: override.description || ('Script loaded from GitHub file: ' + slug),
+      runner: override.runner || inferRunner_(slug),
+      sourcePath: override.sourcePath || slug
+    };
+  });
   return catalog;
 }
 
