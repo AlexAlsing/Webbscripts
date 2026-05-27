@@ -8,7 +8,7 @@
     "clasp:login": "clasp login",
     "clasp:create": "clasp create --type standalone --title \"IT Convenience Scripts\" --rootDir .",
     "clasp:clone": "clasp clone",
-    "clasp:push": "npm run gas:check && clasp push",
+    "clasp:push": "npm run gas:check && clasp push --force",
     "clasp:pull": "npm run gas:check && clasp pull",
     "clasp:open": "npm run gas:check && clasp open",
     "clasp:deploy": "npm run gas:check && clasp deploy",

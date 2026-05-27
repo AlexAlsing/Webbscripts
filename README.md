@@ -76,6 +76,8 @@ Push local files to Apps Script:
 npm run clasp:push
 ```
 
+The push command uses `clasp push --force` after the project check so repeated deploys can update the Apps Script manifest and frontend without an interactive prompt.
+
 Open the Apps Script project in the browser:
 
 ```powershell
