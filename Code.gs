@@ -3,7 +3,8 @@ const GITHUB_SCRIPT_BASE = 'https://raw.githubusercontent.com/AlexAlsing/Webbscr
 const SCRIPT_ROUTES = {
   'crcfix': true,
   'hwinfo': true,
-  'oobe-visualizer': true
+  'oobe-visualizer': true,
+  'test-fun': true
 };
 
 function doGet(e) {

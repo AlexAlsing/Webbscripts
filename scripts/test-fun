@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Hello from test-fun via GitHub -> Apps Script proxy."
+echo "Timestamp (UTC): $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo "Current user: $(whoami)"
+echo "Everything is wired up correctly."
