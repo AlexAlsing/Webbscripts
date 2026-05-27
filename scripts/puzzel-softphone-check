@@ -412,9 +412,6 @@ if ($defaults.Playback) {
 if ($defaults.Recording) {
   Write-Item ("Likely input: {0}" -f $defaults.Recording)
 }
-if ($audioEndpoints -and $audioEndpoints.Count -gt 0) {
-  Write-Item ("Endpoints: {0}" -f (($audioEndpoints | Select-Object -Unique) -join '; '))
-}
 
 Write-Section "Puzzel Mic Risk"
 $builtInMicPattern = '(?i)realtek|internal|built-?in|array|microphone'
