@@ -1,0 +1,209 @@
+$ErrorActionPreference = 'Stop'
+
+function Write-Section {
+  param([string]$Title)
+  Write-Output ""
+  Write-Output ("=== {0} ===" -f $Title)
+}
+
+function Write-Check {
+  param(
+    [string]$Name,
+    [string]$Value
+  )
+  Write-Output ("[+] {0}: {1}" -f $Name, $Value)
+}
+
+function Find-InstalledProgram {
+  param([string]$NamePattern)
+
+  $paths = @(
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+  )
+
+  foreach ($path in $paths) {
+    $match = Get-ItemProperty -Path $path -ErrorAction SilentlyContinue |
+      Where-Object { $_.DisplayName -and $_.DisplayName -match $NamePattern } |
+      Select-Object -First 1
+    if ($match) {
+      return $match
+    }
+  }
+
+  return $null
+}
+
+function Get-DefaultAudioByModule {
+  $result = @{
+    Playback = $null
+    Recording = $null
+  }
+
+  if (-not (Get-Module -ListAvailable -Name AudioDeviceCmdlets)) {
+    return $result
+  }
+
+  Import-Module AudioDeviceCmdlets -ErrorAction SilentlyContinue | Out-Null
+  if (-not (Get-Command Get-AudioDevice -ErrorAction SilentlyContinue)) {
+    return $result
+  }
+
+  try {
+    $playback = Get-AudioDevice -Playback
+    if ($playback -and $playback.Name) {
+      $result.Playback = $playback.Name
+    }
+  } catch {}
+
+  try {
+    $recording = Get-AudioDevice -Recording
+    if ($recording -and $recording.Name) {
+      $result.Recording = $recording.Name
+    }
+  } catch {}
+
+  return $result
+}
+
+function Get-ChromePreferredDevices {
+  $prefsPath = Join-Path $env:LOCALAPPDATA 'Google\Chrome\User Data\Default\Preferences'
+  if (-not (Test-Path $prefsPath)) {
+    return $null
+  }
+
+  try {
+    $json = Get-Content -Raw $prefsPath | ConvertFrom-Json
+    $setting = $json.profile.content_settings.exceptions.media_stream_mic
+    if ($setting) {
+      return 'Chrome has per-site microphone preferences configured.'
+    }
+  } catch {}
+
+  return 'Chrome preference file found, but no readable explicit microphone default was detected.'
+}
+
+Write-Section "Puzzel + Jabra Softphone Check (Windows)"
+Write-Output "Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Write-Output "Computer: $env:COMPUTERNAME"
+Write-Output "User: $env:USERNAME"
+
+$knownModels = @(
+  'Jabra Evolve 75',
+  'Jabra Evolve 75 SE',
+  'Jabra Evolve2 75',
+  'Jabra Evolve3 75'
+)
+
+$modelRegex = '(?i)evolve(?:2|3)? ?75'
+$linkRegex = '(?i)jabra link (370|380|390)'
+$jabraRegex = '(?i)jabra|evolve|link (370|380|390)'
+
+$allPresent = Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue
+$namedDevices = $allPresent | Where-Object { $_.FriendlyName -or $_.Name } | ForEach-Object {
+  [PSCustomObject]@{
+    Name = if ($_.FriendlyName) { $_.FriendlyName } else { $_.Name }
+    Class = $_.Class
+    Status = $_.Status
+    InstanceId = $_.InstanceId
+  }
+}
+
+$jabraDevices = $namedDevices | Where-Object { $_.Name -match $jabraRegex }
+$audioEndpoints = Get-PnpDevice -PresentOnly -Class AudioEndpoint -ErrorAction SilentlyContinue |
+  Where-Object { $_.FriendlyName -or $_.Name } | ForEach-Object {
+    if ($_.FriendlyName) { $_.FriendlyName } else { $_.Name }
+  }
+
+$modelHits = $jabraDevices | Where-Object { $_.Name -match $modelRegex }
+$bluetoothHits = $jabraDevices | Where-Object {
+  $_.Class -eq 'Bluetooth' -or $_.InstanceId -match '^BTH' -or $_.InstanceId -match 'BTHENUM'
+}
+$dongleHits = $jabraDevices | Where-Object { $_.Name -match $linkRegex }
+
+$connectionType = 'Unknown'
+if ($bluetoothHits) {
+  $connectionType = 'Bluetooth'
+} elseif ($dongleHits) {
+  $connectionType = 'USB dongle (Jabra Link)'
+} elseif ($modelHits) {
+  $connectionType = 'Likely wired/cabled (no Bluetooth or Link dongle detected)'
+}
+
+Write-Section "1) Headset model + Bluetooth"
+if ($modelHits) {
+  Write-Check "Detected Jabra model(s)" (($modelHits | Select-Object -ExpandProperty Name -Unique) -join '; ')
+} else {
+  Write-Check "Detected Jabra model(s)" "No listed Evolve 75 variant found right now."
+}
+
+if ($bluetoothHits) {
+  Write-Check "Bluetooth match" (($bluetoothHits | Select-Object -ExpandProperty Name -Unique) -join '; ')
+} else {
+  Write-Check "Bluetooth match" "No active Jabra Bluetooth endpoint detected."
+}
+
+Write-Section "2) Connection type"
+Write-Check "Detected connection path" $connectionType
+if ($dongleHits) {
+  Write-Check "Jabra Link dongle(s)" (($dongleHits | Select-Object -ExpandProperty Name -Unique) -join '; ')
+}
+
+Write-Section "3) Jabra Direct installation"
+$jabraDirect = Find-InstalledProgram -NamePattern '(?i)^jabra direct'
+if ($jabraDirect) {
+  $version = if ($jabraDirect.DisplayVersion) { $jabraDirect.DisplayVersion } else { 'unknown version' }
+  Write-Check "Jabra Direct" ("Installed ({0})" -f $version)
+} else {
+  Write-Check "Jabra Direct" "Not installed or not visible in uninstall registry."
+}
+
+Write-Section "4) Selected input/output device"
+$defaults = Get-DefaultAudioByModule
+if ($defaults.Playback -or $defaults.Recording) {
+  if ($defaults.Playback) {
+    Write-Check "Default output (Playback)" $defaults.Playback
+  } else {
+    Write-Check "Default output (Playback)" "Not found"
+  }
+
+  if ($defaults.Recording) {
+    Write-Check "Default input (Recording)" $defaults.Recording
+  } else {
+    Write-Check "Default input (Recording)" "Not found"
+  }
+} else {
+  Write-Check "Default output/input" "Could not resolve exact defaults natively. Install AudioDeviceCmdlets for exact values."
+  Write-Check "Current audio endpoints (detected)" (($audioEndpoints | Select-Object -Unique) -join '; ')
+}
+
+Write-Section "5) Built-in laptop mic stuck in Puzzel check"
+$builtInMicPattern = '(?i)realtek|internal|built-?in|array|microphone'
+$jabraMicPattern = '(?i)jabra|link'
+
+$likelyBuiltInMic = $audioEndpoints | Where-Object { $_ -match $builtInMicPattern }
+$likelyJabraMic = $audioEndpoints | Where-Object { $_ -match $jabraMicPattern }
+
+if ($defaults.Recording -and $defaults.Recording -match $builtInMicPattern -and $likelyJabraMic) {
+  Write-Check "Warning" "Built-in mic appears to be selected while Jabra endpoint exists. This matches common Puzzel issue."
+  Write-Check "Action" "In Windows Sound + Puzzel softphone settings, switch microphone to Jabra Link/Jabra headset."
+} else {
+  Write-Check "Recording path check" "No clear built-in-mic lock pattern detected."
+}
+
+Write-Section "6) Google (Chrome) selected audio device"
+$chromeStatus = Get-ChromePreferredDevices
+if ($chromeStatus) {
+  Write-Check "Chrome audio preference" $chromeStatus
+} else {
+  Write-Check "Chrome audio preference" "Chrome preference file not found for current user."
+}
+Write-Check "Note" "Per-tab/per-site live device selection in Chrome is not reliably exposed to PowerShell."
+
+Write-Section "7) ANC state in Jabra Direct"
+Write-Check "ANC status" "Not programmatically exposed via standard Windows/PowerShell APIs."
+Write-Check "Action" "Open Jabra Direct > select headset > check ANC/HearThrough mode manually."
+
+Write-Section "Done"
+Write-Output "Diagnostic completed."

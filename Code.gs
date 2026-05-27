@@ -17,6 +17,10 @@ const SCRIPT_OVERRIDES = {
   'test-fun': {
     description: 'Simple test script that prints a few lines.',
     runner: 'iex'
+  },
+  'puzzel-softphone-check': {
+    description: 'Windows diagnostic for Puzzel + Jabra headset integration in Kundservice.',
+    runner: 'iex'
   }
 };
 
@@ -140,6 +144,10 @@ function buildScriptCatalog_() {
     }
 
     const name = String(item.name);
+    if (!isScriptCandidate_(name)) {
+      return;
+    }
+
     const slug = normalizeSlug_(name);
     if (!slug) {
       return;
@@ -180,6 +188,14 @@ function normalizeSlug_(fileName) {
 
 function inferRunner_(fileName) {
   return /\.ps1$/i.test(fileName) ? 'iex' : 'bash';
+}
+
+function isScriptCandidate_(fileName) {
+  const lower = String(fileName).toLowerCase();
+  if (lower.endsWith('.ps1') || lower.endsWith('.sh') || lower.endsWith('.bash')) {
+    return true;
+  }
+  return !lower.includes('.');
 }
 
 function getWebAppBaseUrl_() {
