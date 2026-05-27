@@ -203,17 +203,185 @@ function Get-ChromePuzzelStatus {
   return [PSCustomObject]$result
 }
 
+function Ensure-ChildObject {
+  param(
+    [object]$Parent,
+    [string]$PropertyName
+  )
+
+  $prop = $Parent.PSObject.Properties[$PropertyName]
+  if ($prop -and $null -ne $prop.Value) {
+    return $prop.Value
+  }
+
+  $child = [PSCustomObject]@{}
+  if ($prop) {
+    $Parent.$PropertyName = $child
+  } else {
+    $Parent | Add-Member -NotePropertyName $PropertyName -NotePropertyValue $child
+  }
+  return $child
+}
+
+function Set-NotePropertyValue {
+  param(
+    [object]$Parent,
+    [string]$PropertyName,
+    [object]$Value
+  )
+
+  $prop = $Parent.PSObject.Properties[$PropertyName]
+  if ($prop) {
+    $Parent.$PropertyName = $Value
+  } else {
+    $Parent | Add-Member -NotePropertyName $PropertyName -NotePropertyValue $Value
+  }
+}
+
+function Get-ChromeTimestampValue {
+  $epoch = [DateTime]::Parse('1601-01-01T00:00:00Z').ToUniversalTime()
+  $now = (Get-Date).ToUniversalTime()
+  return [string][Int64](($now - $epoch).TotalMilliseconds * 1000)
+}
+
+function Prompt-YesNo {
+  param(
+    [string]$Question
+  )
+
+  while ($true) {
+    $answer = Read-Host ($Question + ' [y/n]')
+    if ($null -eq $answer) {
+      continue
+    }
+
+    $normalized = $answer.Trim().ToLowerInvariant()
+    if ($normalized -eq 'y' -or $normalized -eq 'yes') {
+      return $true
+    }
+    if ($normalized -eq 'n' -or $normalized -eq 'no') {
+      return $false
+    }
+  }
+}
+
+function Try-SetWindowsDefaultToJabraLink {
+  param([string]$LinkPattern)
+
+  $result = [ordered]@{
+    Success = $false
+    Message = ''
+    Playback = $null
+    Recording = $null
+  }
+
+  if (-not (Get-Module -ListAvailable -Name AudioDeviceCmdlets)) {
+    $result.Message = 'AudioDeviceCmdlets is not installed.'
+    return [PSCustomObject]$result
+  }
+
+  Import-Module AudioDeviceCmdlets -ErrorAction SilentlyContinue | Out-Null
+  if (-not (Get-Command Get-AudioDevice -ErrorAction SilentlyContinue) -or -not (Get-Command Set-AudioDevice -ErrorAction SilentlyContinue)) {
+    $result.Message = 'AudioDeviceCmdlets commands are unavailable after import.'
+    return [PSCustomObject]$result
+  }
+
+  try {
+    $devices = Get-AudioDevice -List
+  } catch {
+    $result.Message = 'Failed to enumerate audio devices via AudioDeviceCmdlets.'
+    return [PSCustomObject]$result
+  }
+
+  $targetPlayback = $devices | Where-Object { $_.Type -eq 'Playback' -and $_.Name -match $LinkPattern } | Select-Object -First 1
+  $targetRecording = $devices | Where-Object { $_.Type -eq 'Recording' -and $_.Name -match $LinkPattern } | Select-Object -First 1
+
+  if (-not $targetPlayback -or -not $targetRecording) {
+    $result.Message = 'Could not find both playback and recording Jabra Link devices in AudioDeviceCmdlets.'
+    return [PSCustomObject]$result
+  }
+
+  try {
+    $targetPlayback | Set-AudioDevice | Out-Null
+    $targetRecording | Set-AudioDevice | Out-Null
+    $result.Success = $true
+    $result.Playback = $targetPlayback.Name
+    $result.Recording = $targetRecording.Name
+    $result.Message = 'Windows default playback/recording switched to Jabra Link.'
+  } catch {
+    $result.Message = 'Set-AudioDevice failed. Open Sound settings and set Jabra Link manually.'
+  }
+
+  return [PSCustomObject]$result
+}
+
+function Set-ChromePuzzelMicPreferences {
+  param(
+    [string]$PreferredInputName
+  )
+
+  $result = [ordered]@{
+    ProfilesUpdated = @()
+    ProfilesFailed = @()
+    Message = ''
+  }
+
+  $profilesRoot = Join-Path $env:LOCALAPPDATA 'Google\Chrome\User Data'
+  if (-not (Test-Path $profilesRoot)) {
+    $result.Message = 'Chrome profile root was not found.'
+    return [PSCustomObject]$result
+  }
+
+  $profileDirs = Get-ChildItem -Path $profilesRoot -Directory -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -eq 'Default' -or $_.Name -like 'Profile *' }
+
+  $modifiedCount = 0
+  $timestamp = Get-ChromeTimestampValue
+
+  foreach ($profile in $profileDirs) {
+    $prefsPath = Join-Path $profile.FullName 'Preferences'
+    if (-not (Test-Path $prefsPath)) {
+      continue
+    }
+
+    try {
+      $json = Get-Content -Raw $prefsPath | ConvertFrom-Json
+
+      $profileObj = Ensure-ChildObject -Parent $json -PropertyName 'profile'
+      $contentSettingsObj = Ensure-ChildObject -Parent $profileObj -PropertyName 'content_settings'
+      $exceptionsObj = Ensure-ChildObject -Parent $contentSettingsObj -PropertyName 'exceptions'
+      $micExceptions = Ensure-ChildObject -Parent $exceptionsObj -PropertyName 'media_stream_mic'
+
+      $allowRule = [PSCustomObject]@{
+        last_modified = $timestamp
+        setting = 1
+      }
+
+      Set-NotePropertyValue -Parent $micExceptions -PropertyName 'https://agent.puzzel.com:443,*' -Value $allowRule
+      Set-NotePropertyValue -Parent $micExceptions -PropertyName 'https://[*.]puzzel.com:443,*' -Value $allowRule
+
+      if ($PreferredInputName) {
+        $mediaObj = Ensure-ChildObject -Parent $json -PropertyName 'media'
+        $audioInputObj = Ensure-ChildObject -Parent $mediaObj -PropertyName 'audio_input'
+        $audioInputObj.user_preference_ranking = @($PreferredInputName)
+      }
+
+      Set-Content -Path $prefsPath -Value ($json | ConvertTo-Json -Depth 50) -Encoding UTF8
+      $modifiedCount += 1
+      $result.ProfilesUpdated += $profile.Name
+    } catch {
+      $result.ProfilesFailed += $profile.Name
+    }
+  }
+
+  $result.Message = ("Updated {0} Chrome profile(s)." -f $modifiedCount)
+  return [PSCustomObject]$result
+}
+
 Write-Section "Puzzel + Jabra Softphone Check (Windows)"
 Write-Output "Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 Write-Output "Computer: $env:COMPUTERNAME"
 Write-Output "User: $env:USERNAME"
-
-$knownModels = @(
-  'Jabra Evolve 75',
-  'Jabra Evolve 75 SE',
-  'Jabra Evolve2 75',
-  'Jabra Evolve3 75'
-)
 
 $modelRegex = '(?i)evolve(?:2|3)? ?75'
 $linkRegex = '(?i)jabra link (370|380|390)'
@@ -240,6 +408,9 @@ $bluetoothHits = $jabraDevices | Where-Object {
   $_.Class -eq 'Bluetooth' -or $_.InstanceId -match '^BTH' -or $_.InstanceId -match 'BTHENUM'
 }
 $dongleHits = $jabraDevices | Where-Object { $_.Name -match $linkRegex }
+$standardBluetoothHits = $modelHits | Where-Object {
+  $_.Class -eq 'Bluetooth' -or $_.InstanceId -match '^BTH' -or $_.InstanceId -match 'BTHENUM'
+}
 
 $connectionType = 'Unknown'
 if ($bluetoothHits) {
@@ -366,9 +537,103 @@ if ($chromePuzzel.PreferredInputs -and $chromePuzzel.PreferredInputs.Count -gt 0
 }
 Write-Check "Note" "Live per-tab selected microphone is still not reliably exposed via standard PowerShell."
 
-Write-Section "7) ANC state in Jabra Direct"
-Write-Check "ANC status" "Not programmatically exposed via standard Windows/PowerShell APIs."
-Write-Check "Action" "Open Jabra Direct > select headset > check ANC/HearThrough mode manually."
+Write-Section "7) Guided actions (y/n)"
+
+$preferredJabraInputCandidate = $audioEndpoints |
+  Where-Object { $_ -match $linkRegex -and $_ -match '(?i)microphone|mikrofon' } |
+  Select-Object -First 1
+
+$preferredJabraOutputCandidate = $audioEndpoints |
+  Where-Object { $_ -match $linkRegex -and $_ -match '(?i)speaker|h.gtalare|headphones|h.rlurar' } |
+  Select-Object -First 1
+
+if ($standardBluetoothHits -and $standardBluetoothHits.Count -gt 0) {
+  $answerRemoveBluetooth = Prompt-YesNo -Question 'Do you want to remove bluetooth connection?'
+  if ($answerRemoveBluetooth) {
+    $btNames = ($standardBluetoothHits | Select-Object -ExpandProperty Name -Unique) -join '; '
+    Write-Check "Bluetooth devices to remove" $btNames
+    Write-Check "Action" "Opening Windows Bluetooth settings. Remove the headset pairing manually there."
+    try {
+      Start-Process 'ms-settings:bluetooth'
+    } catch {
+      Write-Check "Action" "Could not open Bluetooth settings automatically. Open Settings > Bluetooth & devices."
+    }
+  } else {
+    Write-Check "Bluetooth cleanup" "Skipped by user."
+  }
+} else {
+  Write-Check "Bluetooth cleanup prompt" "No standard Jabra model on Bluetooth detected, prompt skipped."
+}
+
+$hasJabraLinkEndpoint = $audioEndpoints | Where-Object { $_ -match $linkRegex }
+$defaultOutputNonJabra = $false
+$defaultInputNonJabra = $false
+if ($defaults.Playback) {
+  $defaultOutputNonJabra = $defaults.Playback -notmatch $linkRegex
+}
+if ($defaults.Recording) {
+  $defaultInputNonJabra = $defaults.Recording -notmatch $linkRegex
+}
+
+$chromePreferredNonJabra = $false
+if ($chromePuzzel.PreferredInputs -and $chromePuzzel.PreferredInputs.Count -gt 0) {
+  $nonJabraPreferred = $chromePuzzel.PreferredInputs | Where-Object { $_.FirstChoice -notmatch $linkRegex }
+  if ($nonJabraPreferred -and $nonJabraPreferred.Count -gt 0) {
+    $chromePreferredNonJabra = $true
+  }
+}
+
+$otherHeadsetSet = $false
+if ($hasJabraLinkEndpoint -and ($defaultOutputNonJabra -or $defaultInputNonJabra -or $chromePreferredNonJabra)) {
+  $otherHeadsetSet = $true
+}
+
+if ($otherHeadsetSet) {
+  $answerSwapWindows = Prompt-YesNo -Question 'Do you want to swap to Jabra link as preferred input/output'
+  if ($answerSwapWindows) {
+    $swapResult = Try-SetWindowsDefaultToJabraLink -LinkPattern $linkRegex
+    if ($swapResult.Success) {
+      Write-Check "Windows default switch" $swapResult.Message
+      Write-Check "New playback target" $swapResult.Playback
+      Write-Check "New recording target" $swapResult.Recording
+    } else {
+      Write-Check "Windows default switch" $swapResult.Message
+      Write-Check "Action" "Opening Sound settings for manual switch to Jabra Link."
+      try {
+        Start-Process 'ms-settings:sound'
+      } catch {
+        Write-Check "Action" "Could not open Sound settings automatically."
+      }
+    }
+  } else {
+    Write-Check "Windows default switch" "Skipped by user."
+  }
+} else {
+  Write-Check "Swap prompt" "No clear non-Jabra default detected, prompt skipped."
+}
+
+$answerPuzzelSite = Prompt-YesNo -Question 'Do you want to set "Jabra link xxx" as prefered input/output on agent.puzzel.com'
+if ($answerPuzzelSite) {
+  $selectedJabraInput = $preferredJabraInputCandidate
+  if (-not $selectedJabraInput -and $defaults.Recording -and $defaults.Recording -match $linkRegex) {
+    $selectedJabraInput = $defaults.Recording
+  }
+
+  $chromeSet = Set-ChromePuzzelMicPreferences -PreferredInputName $selectedJabraInput
+  Write-Check "Chrome update result" $chromeSet.Message
+  if ($chromeSet.ProfilesUpdated -and $chromeSet.ProfilesUpdated.Count -gt 0) {
+    Write-Check "Profiles updated" (($chromeSet.ProfilesUpdated) -join '; ')
+  }
+  if ($chromeSet.ProfilesFailed -and $chromeSet.ProfilesFailed.Count -gt 0) {
+    Write-Check "Profiles failed" (($chromeSet.ProfilesFailed) -join '; ')
+  }
+  if ($preferredJabraOutputCandidate) {
+    Write-Check "Preferred Jabra output candidate" $preferredJabraOutputCandidate
+  }
+  Write-Check "Note" "Chrome must be fully restarted after this change. Then verify device selection inside agent.puzzel.com call settings."
+} else {
+  Write-Check "agent.puzzel.com preference update" "Skipped by user."
+}
 
 Write-Section "Done"
 Write-Output "Diagnostic completed."
