@@ -40,34 +40,25 @@ function Find-InstalledProgram {
   return $null
 }
 
-function Get-DefaultAudioByModule {
+function Get-LikelyActiveAudioEndpoints {
+  param([string[]]$AudioEndpoints)
+
   $result = @{
     Playback = $null
     Recording = $null
   }
 
-  if (-not (Get-Module -ListAvailable -Name AudioDeviceCmdlets)) {
+  if (-not $AudioEndpoints -or $AudioEndpoints.Count -eq 0) {
     return $result
   }
 
-  Import-Module AudioDeviceCmdlets -ErrorAction SilentlyContinue | Out-Null
-  if (-not (Get-Command Get-AudioDevice -ErrorAction SilentlyContinue)) {
-    return $result
-  }
+  $result.Recording = $AudioEndpoints |
+    Where-Object { $_ -match '(?i)microphone|mikrofon' } |
+    Select-Object -First 1
 
-  try {
-    $playback = Get-AudioDevice -Playback
-    if ($playback -and $playback.Name) {
-      $result.Playback = $playback.Name
-    }
-  } catch {}
-
-  try {
-    $recording = Get-AudioDevice -Recording
-    if ($recording -and $recording.Name) {
-      $result.Recording = $recording.Name
-    }
-  } catch {}
+  $result.Playback = $AudioEndpoints |
+    Where-Object { $_ -match '(?i)speaker|h.gtalare|headphones|h.rlurar' } |
+    Select-Object -First 1
 
   return $result
 }
@@ -280,42 +271,7 @@ function Try-SetWindowsDefaultToJabraLink {
     Recording = $null
   }
 
-  if (-not (Get-Module -ListAvailable -Name AudioDeviceCmdlets)) {
-    $result.Message = 'AudioDeviceCmdlets is not installed.'
-    return [PSCustomObject]$result
-  }
-
-  Import-Module AudioDeviceCmdlets -ErrorAction SilentlyContinue | Out-Null
-  if (-not (Get-Command Get-AudioDevice -ErrorAction SilentlyContinue) -or -not (Get-Command Set-AudioDevice -ErrorAction SilentlyContinue)) {
-    $result.Message = 'AudioDeviceCmdlets commands are unavailable after import.'
-    return [PSCustomObject]$result
-  }
-
-  try {
-    $devices = Get-AudioDevice -List
-  } catch {
-    $result.Message = 'Failed to enumerate audio devices via AudioDeviceCmdlets.'
-    return [PSCustomObject]$result
-  }
-
-  $targetPlayback = $devices | Where-Object { $_.Type -eq 'Playback' -and $_.Name -match $LinkPattern } | Select-Object -First 1
-  $targetRecording = $devices | Where-Object { $_.Type -eq 'Recording' -and $_.Name -match $LinkPattern } | Select-Object -First 1
-
-  if (-not $targetPlayback -or -not $targetRecording) {
-    $result.Message = 'Could not find both playback and recording Jabra Link devices in AudioDeviceCmdlets.'
-    return [PSCustomObject]$result
-  }
-
-  try {
-    $targetPlayback | Set-AudioDevice | Out-Null
-    $targetRecording | Set-AudioDevice | Out-Null
-    $result.Success = $true
-    $result.Playback = $targetPlayback.Name
-    $result.Recording = $targetRecording.Name
-    $result.Message = 'Windows default playback/recording switched to Jabra Link.'
-  } catch {
-    $result.Message = 'Set-AudioDevice failed. Open Sound settings and set Jabra Link manually.'
-  }
+  $result.Message = 'Automatic default device switch is disabled. Open Sound settings and set Jabra Link manually.'
 
   return [PSCustomObject]$result
 }
@@ -449,24 +405,15 @@ if ($jabraDirect) {
 }
 
 Write-Section "Audio"
-$defaults = Get-DefaultAudioByModule
-if ($defaults.Playback -or $defaults.Recording) {
-  if ($defaults.Playback) {
-    Write-Item ("Output: {0}" -f $defaults.Playback)
-  } else {
-    Write-Item "Output: not found"
-  }
-
-  if ($defaults.Recording) {
-    Write-Item ("Input: {0}" -f $defaults.Recording)
-  } else {
-    Write-Item "Input: not found"
-  }
-} else {
-  Write-Item "Default I/O: exact values unavailable (install AudioDeviceCmdlets for exact defaults)"
-  if ($audioEndpoints -and $audioEndpoints.Count -gt 0) {
-    Write-Item ("Endpoints: {0}" -f (($audioEndpoints | Select-Object -Unique) -join '; '))
-  }
+$defaults = Get-LikelyActiveAudioEndpoints -AudioEndpoints $audioEndpoints
+if ($defaults.Playback) {
+  Write-Item ("Likely output: {0}" -f $defaults.Playback)
+}
+if ($defaults.Recording) {
+  Write-Item ("Likely input: {0}" -f $defaults.Recording)
+}
+if ($audioEndpoints -and $audioEndpoints.Count -gt 0) {
+  Write-Item ("Endpoints: {0}" -f (($audioEndpoints | Select-Object -Unique) -join '; '))
 }
 
 Write-Section "Puzzel Mic Risk"
