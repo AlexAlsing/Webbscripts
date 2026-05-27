@@ -67,21 +67,140 @@ function Get-DefaultAudioByModule {
   return $result
 }
 
-function Get-ChromePreferredDevices {
-  $prefsPath = Join-Path $env:LOCALAPPDATA 'Google\Chrome\User Data\Default\Preferences'
-  if (-not (Test-Path $prefsPath)) {
-    return $null
+function Convert-ChromeMicSettingValue {
+  param([object]$Value)
+
+  if ($null -eq $Value) {
+    return 'unknown'
   }
 
-  try {
-    $json = Get-Content -Raw $prefsPath | ConvertFrom-Json
-    $setting = $json.profile.content_settings.exceptions.media_stream_mic
-    if ($setting) {
-      return 'Chrome has per-site microphone preferences configured.'
-    }
-  } catch {}
+  $stringValue = [string]$Value
+  if ($stringValue -eq '1') {
+    return 'allow'
+  }
+  if ($stringValue -eq '2') {
+    return 'block'
+  }
+  if ($stringValue -eq '3') {
+    return 'ask'
+  }
+  return ("value={0}" -f $stringValue)
+}
 
-  return 'Chrome preference file found, but no readable explicit microphone default was detected.'
+function Get-ChromePolicyStatus {
+  $status = [ordered]@{
+    AudioCaptureAllowed = $null
+    AudioCaptureAllowedScope = @()
+    AudioCaptureAllowedUrls = @()
+    AudioCaptureAllowedUrlsScope = @()
+  }
+
+  $policyRoots = @(
+    'HKLM:\SOFTWARE\Policies\Google\Chrome',
+    'HKCU:\SOFTWARE\Policies\Google\Chrome'
+  )
+
+  foreach ($root in $policyRoots) {
+    if (-not (Test-Path $root)) {
+      continue
+    }
+
+    $props = Get-ItemProperty -Path $root -ErrorAction SilentlyContinue
+    if ($props -and $null -ne $props.AudioCaptureAllowed) {
+      $status.AudioCaptureAllowed = [int]$props.AudioCaptureAllowed
+      $status.AudioCaptureAllowedScope += $root
+    }
+
+    $urlsKey = Join-Path $root 'AudioCaptureAllowedUrls'
+    if (Test-Path $urlsKey) {
+      $urlProps = Get-ItemProperty -Path $urlsKey -ErrorAction SilentlyContinue
+      if ($urlProps) {
+        $entries = $urlProps.PSObject.Properties | Where-Object { $_.Name -notmatch '^PS' } | Sort-Object Name
+        foreach ($entry in $entries) {
+          if ($entry.Value) {
+            $status.AudioCaptureAllowedUrls += [string]$entry.Value
+          }
+        }
+        if ($entries) {
+          $status.AudioCaptureAllowedUrlsScope += $urlsKey
+        }
+      }
+    }
+  }
+
+  $status.AudioCaptureAllowedScope = $status.AudioCaptureAllowedScope | Select-Object -Unique
+  $status.AudioCaptureAllowedUrls = $status.AudioCaptureAllowedUrls | Select-Object -Unique
+  $status.AudioCaptureAllowedUrlsScope = $status.AudioCaptureAllowedUrlsScope | Select-Object -Unique
+  return [PSCustomObject]$status
+}
+
+function Get-ChromePuzzelStatus {
+  param([string[]]$TargetDomains)
+
+  $result = [ordered]@{
+    ProfilesChecked = 0
+    PuzzelMicRules = @()
+    PreferredInputs = @()
+  }
+
+  $profilesRoot = Join-Path $env:LOCALAPPDATA 'Google\Chrome\User Data'
+  if (-not (Test-Path $profilesRoot)) {
+    return [PSCustomObject]$result
+  }
+
+  $profileDirs = Get-ChildItem -Path $profilesRoot -Directory -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -eq 'Default' -or $_.Name -like 'Profile *' }
+
+  foreach ($profile in $profileDirs) {
+    $prefsPath = Join-Path $profile.FullName 'Preferences'
+    if (-not (Test-Path $prefsPath)) {
+      continue
+    }
+
+    $result.ProfilesChecked += 1
+
+    try {
+      $json = Get-Content -Raw $prefsPath | ConvertFrom-Json
+    } catch {
+      continue
+    }
+
+    $ranking = $json.media.audio_input.user_preference_ranking
+    if ($ranking) {
+      $firstChoice = $null
+      if ($ranking -is [System.Array]) {
+        $firstChoice = [string]$ranking[0]
+      } else {
+        $firstChoice = [string]$ranking
+      }
+      $result.PreferredInputs += [PSCustomObject]@{
+        Profile = $profile.Name
+        FirstChoice = $firstChoice
+      }
+    }
+
+    $micExceptions = $json.profile.content_settings.exceptions.media_stream_mic
+    if (-not $micExceptions) {
+      continue
+    }
+
+    foreach ($property in $micExceptions.PSObject.Properties) {
+      $ruleKey = [string]$property.Name
+      foreach ($domain in $TargetDomains) {
+        if ($ruleKey -match [regex]::Escape($domain)) {
+          $settingValue = $property.Value.setting
+          $result.PuzzelMicRules += [PSCustomObject]@{
+            Profile = $profile.Name
+            RuleKey = $ruleKey
+            Setting = Convert-ChromeMicSettingValue -Value $settingValue
+          }
+          break
+        }
+      }
+    }
+  }
+
+  return [PSCustomObject]$result
 }
 
 Write-Section "Puzzel + Jabra Softphone Check (Windows)"
@@ -193,13 +312,59 @@ if ($defaults.Recording -and $defaults.Recording -match $builtInMicPattern -and 
 }
 
 Write-Section "6) Google (Chrome) selected audio device"
-$chromeStatus = Get-ChromePreferredDevices
-if ($chromeStatus) {
-  Write-Check "Chrome audio preference" $chromeStatus
+$puzzelDomains = @('puzzel.com', 'agent.puzzel.com')
+$chromePolicy = Get-ChromePolicyStatus
+$chromePuzzel = Get-ChromePuzzelStatus -TargetDomains $puzzelDomains
+
+if ($null -ne $chromePolicy.AudioCaptureAllowed) {
+  if ($chromePolicy.AudioCaptureAllowed -eq 1) {
+    Write-Check "Chrome policy AudioCaptureAllowed" "Enabled"
+  } else {
+    Write-Check "Chrome policy AudioCaptureAllowed" ("Value=" + $chromePolicy.AudioCaptureAllowed)
+  }
+  Write-Check "Policy source" (($chromePolicy.AudioCaptureAllowedScope) -join '; ')
 } else {
-  Write-Check "Chrome audio preference" "Chrome preference file not found for current user."
+  Write-Check "Chrome policy AudioCaptureAllowed" "Not configured"
 }
-Write-Check "Note" "Per-tab/per-site live device selection in Chrome is not reliably exposed to PowerShell."
+
+if ($chromePolicy.AudioCaptureAllowedUrls -and $chromePolicy.AudioCaptureAllowedUrls.Count -gt 0) {
+  Write-Check "AudioCaptureAllowedUrls" (($chromePolicy.AudioCaptureAllowedUrls) -join '; ')
+  Write-Check "AllowedUrls source" (($chromePolicy.AudioCaptureAllowedUrlsScope) -join '; ')
+  $hasPuzzelPolicy = $false
+  foreach ($urlPattern in $chromePolicy.AudioCaptureAllowedUrls) {
+    if ($urlPattern -match 'puzzel\.com') {
+      $hasPuzzelPolicy = $true
+      break
+    }
+  }
+  if ($hasPuzzelPolicy) {
+    Write-Check "Puzzel URL policy" "Configured"
+  } else {
+    Write-Check "Puzzel URL policy" "Missing (recommend adding https://[*.]puzzel.com/ and https://agent.puzzel.com/)"
+  }
+} else {
+  Write-Check "AudioCaptureAllowedUrls" "Not configured"
+}
+
+Write-Check "Chrome profiles checked" ([string]$chromePuzzel.ProfilesChecked)
+if ($chromePuzzel.PuzzelMicRules -and $chromePuzzel.PuzzelMicRules.Count -gt 0) {
+  $rules = $chromePuzzel.PuzzelMicRules | ForEach-Object {
+    "{0} => {1} ({2})" -f $_.Profile, $_.RuleKey, $_.Setting
+  }
+  Write-Check "Puzzel mic rules in Preferences" ($rules -join ' | ')
+} else {
+  Write-Check "Puzzel mic rules in Preferences" "No explicit puzzel.com mic rule found in local Chrome profiles."
+}
+
+if ($chromePuzzel.PreferredInputs -and $chromePuzzel.PreferredInputs.Count -gt 0) {
+  $choices = $chromePuzzel.PreferredInputs | ForEach-Object {
+    "{0} => {1}" -f $_.Profile, $_.FirstChoice
+  }
+  Write-Check "Chrome preferred input ranking (first choice)" ($choices -join ' | ')
+} else {
+  Write-Check "Chrome preferred input ranking" "No readable preferred input ranking found."
+}
+Write-Check "Note" "Live per-tab selected microphone is still not reliably exposed via standard PowerShell."
 
 Write-Section "7) ANC state in Jabra Direct"
 Write-Check "ANC status" "Not programmatically exposed via standard Windows/PowerShell APIs."
