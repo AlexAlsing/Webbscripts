@@ -52,7 +52,7 @@
     document.getElementById('updatedAt').textContent = formatted;
 
     const fallbackBase = `${window.location.origin}${window.location.pathname}`.replace(/\/$/, '');
-    const webAppBase = `<?!= webAppBaseUrl ?>`;
+    const webAppBase = <?!= webAppBaseUrlJson ?>;
     const appBase = webAppBase || fallbackBase;
     const scriptCatalog = <?!= scriptCatalogJson ?>;
     const scriptsList = document.getElementById('scriptsList');

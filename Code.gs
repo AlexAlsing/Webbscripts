@@ -42,7 +42,7 @@ function renderIndex_() {
   const catalog = buildScriptCatalog_();
   const template = HtmlService.createTemplateFromFile('index');
   template.scriptCatalogJson = JSON.stringify(catalog);
-  template.webAppBaseUrl = getWebAppBaseUrl_();
+  template.webAppBaseUrlJson = JSON.stringify(getWebAppBaseUrl_());
   return template.evaluate().setTitle('IT Convenience Scripts');
 }
 
