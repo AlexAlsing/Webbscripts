@@ -54,6 +54,7 @@
     const fallbackBase = `${window.location.origin}${window.location.pathname}`.replace(/\/$/, '');
     const webAppBase = <?!= webAppBaseUrlJson ?>;
     const appBase = webAppBase || fallbackBase;
+    const rawBase = 'https://raw.githubusercontent.com/AlexAlsing/Webbscripts/main/scripts';
     const scriptCatalog = <?!= scriptCatalogJson ?>;
     const scriptsList = document.getElementById('scriptsList');
 
@@ -61,12 +62,14 @@
       const article = document.createElement('article');
       article.className = 'rounded-lg border border-gray-700/70 bg-gray-800/70 p-4 shadow-sm';
 
+      const sourcePath = config.sourcePath || slug;
+      const rawUrl = `${rawBase}/${encodeURIComponent(sourcePath)}`;
       const proxyUrl = `${appBase}/${slug}`;
       const viewUrl = `${appBase}/view/${slug}`;
       const runner = config.runner;
       const commandPrefix = runner === 'iex' ? 'irm' : 'curl -fsSL';
-      const command = `${commandPrefix} ${proxyUrl} | ${runner}`;
-      const preview = `${commandPrefix} ${proxyUrl}`;
+      const command = `${commandPrefix} ${rawUrl} | ${runner}`;
+      const preview = `${commandPrefix} ${rawUrl}`;
 
       article.innerHTML = `
         <h2 class="mono text-lg font-bold text-sky-400">/${slug}</h2>
