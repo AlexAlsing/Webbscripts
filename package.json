@@ -4,13 +4,15 @@
   "private": true,
   "description": "IT Convenience Scripts portal for Google Apps Script.",
   "scripts": {
+    "gas:check": "node scripts/check-clasp-project.js",
     "clasp:login": "clasp login",
     "clasp:create": "clasp create --type standalone --title \"IT Convenience Scripts\" --rootDir .",
     "clasp:clone": "clasp clone",
-    "clasp:push": "clasp push",
-    "clasp:pull": "clasp pull",
-    "clasp:open": "clasp open",
-    "clasp:deploy": "clasp deploy"
+    "clasp:push": "npm run gas:check && clasp push",
+    "clasp:pull": "npm run gas:check && clasp pull",
+    "clasp:open": "npm run gas:check && clasp open",
+    "clasp:deploy": "npm run gas:check && clasp deploy",
+    "clasp:status": "npm run gas:check && clasp status"
   },
   "devDependencies": {
     "@google/clasp": "^2.4.2"

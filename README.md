@@ -49,6 +49,25 @@ function doGet() {
 }
 ```
 
+## What Gets Pushed to Apps Script
+
+Apps Script-delivered files must live at the repository root and be explicitly allowed in `.claspignore`.
+
+Current pushed files:
+
+- `appsscript.json`
+- `Code.gs`
+- `index.html`
+
+When adding a new Apps Script feature, add its `.gs` or `.html` file to the repo root and add an allow entry to `.claspignore`, for example:
+
+```text
+!FeatureName.gs
+!FeaturePanel.html
+```
+
+Repository-only files stay blocked by default because `.claspignore` starts with `**/**`.
+
 ## Push and Open
 
 Push local files to Apps Script:
@@ -65,7 +84,16 @@ npm run clasp:open
 
 Deploy from the Apps Script editor when ready.
 
-Only the Apps Script files are pushed by `clasp`: `Code.gs`, `index.html`, and `appsscript.json`. Repository-only files such as `README.md`, `package.json`, and `.gitignore` are excluded by `.claspignore`.
+Each push, pull, open, and deploy command first runs `npm run gas:check`. This verifies that local `.clasp.json` exists, has a real `scriptId`, and uses this repository as the `rootDir`.
+
+For stricter checks in automation, set `EXPECTED_SCRIPT_ID` before running a command:
+
+```powershell
+$env:EXPECTED_SCRIPT_ID = "<SCRIPT_ID>"
+npm run clasp:push
+```
+
+Only files allowed by `.claspignore` are pushed. Repository-only files such as `README.md`, `package.json`, and `.gitignore` are excluded.
 
 ## Required User-Side Adjustments
 
