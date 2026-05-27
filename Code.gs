@@ -1,6 +1,7 @@
 const GITHUB_SCRIPT_BASE = 'https://raw.githubusercontent.com/AlexAlsing/Webbscripts/main/scripts/';
+const GITHUB_SCRIPTS_API = 'https://api.github.com/repos/AlexAlsing/Webbscripts/contents/scripts?ref=main';
 
-const SCRIPT_CATALOG = {
+const SCRIPT_OVERRIDES = {
   'crcfix': {
     description: 'Solves CRC error while downloading from filewave booster servers.',
     runner: 'bash'
@@ -38,18 +39,21 @@ function routeRequest_(pathInfo) {
 }
 
 function renderIndex_() {
+  const catalog = buildScriptCatalog_();
   const template = HtmlService.createTemplateFromFile('index');
-  template.scriptCatalogJson = JSON.stringify(SCRIPT_CATALOG);
+  template.scriptCatalogJson = JSON.stringify(catalog);
   return template.evaluate().setTitle('IT Convenience Scripts');
 }
 
 function proxyScript_(slug) {
-  if (!SCRIPT_CATALOG[slug]) {
+  const catalog = buildScriptCatalog_();
+  const scriptConfig = catalog[slug];
+  if (!scriptConfig) {
     return ContentService.createTextOutput('Unknown script route: ' + slug)
       .setMimeType(ContentService.MimeType.TEXT);
   }
 
-  const fetchResult = fetchScriptText_(slug);
+  const fetchResult = fetchScriptText_(scriptConfig.sourcePath);
   if (!fetchResult.ok) {
     return ContentService.createTextOutput('Failed to fetch script from GitHub: HTTP ' + fetchResult.code)
       .setMimeType(ContentService.MimeType.TEXT);
@@ -61,11 +65,13 @@ function proxyScript_(slug) {
 
 function renderScriptView_(slugValue) {
   const slug = (slugValue || '').toLowerCase();
-  if (!SCRIPT_CATALOG[slug]) {
+  const catalog = buildScriptCatalog_();
+  const scriptConfig = catalog[slug];
+  if (!scriptConfig) {
     return HtmlService.createHtmlOutput('<h3>Unknown script route.</h3>');
   }
 
-  const fetchResult = fetchScriptText_(slug);
+  const fetchResult = fetchScriptText_(scriptConfig.sourcePath);
   if (!fetchResult.ok) {
     return HtmlService.createHtmlOutput('<h3>Failed to fetch script from GitHub: HTTP ' + fetchResult.code + '</h3>');
   }
@@ -86,8 +92,8 @@ function renderScriptView_(slugValue) {
   return HtmlService.createHtmlOutput(html);
 }
 
-function fetchScriptText_(slug) {
-  const sourceUrl = GITHUB_SCRIPT_BASE + encodeURIComponent(slug);
+function fetchScriptText_(sourcePath) {
+  const sourceUrl = GITHUB_SCRIPT_BASE + encodeURIComponent(sourcePath);
   const response = UrlFetchApp.fetch(sourceUrl, {
     muteHttpExceptions: true,
     followRedirects: true
@@ -97,4 +103,50 @@ function fetchScriptText_(slug) {
     code: response.getResponseCode(),
     body: response.getContentText()
   };
+}
+
+function buildScriptCatalog_() {
+  const response = UrlFetchApp.fetch(GITHUB_SCRIPTS_API, {
+    muteHttpExceptions: true,
+    followRedirects: true
+  });
+  if (response.getResponseCode() !== 200) {
+    throw new Error('Failed to fetch scripts index from GitHub: HTTP ' + response.getResponseCode());
+  }
+
+  const files = JSON.parse(response.getContentText());
+  const catalog = {};
+
+  files.forEach(function(item) {
+    if (!item || item.type !== 'file' || !item.name) {
+      return;
+    }
+
+    const name = String(item.name);
+    const slug = normalizeSlug_(name);
+    if (!slug) {
+      return;
+    }
+
+    const override = SCRIPT_OVERRIDES[slug] || {};
+    catalog[slug] = {
+      description: override.description || ('Script loaded from GitHub file: ' + name),
+      runner: override.runner || inferRunner_(name),
+      sourcePath: override.sourcePath || name
+    };
+  });
+
+  return catalog;
+}
+
+function normalizeSlug_(fileName) {
+  return fileName
+    .replace(/\.ps1$/i, '')
+    .replace(/\.sh$/i, '')
+    .replace(/\.bash$/i, '')
+    .toLowerCase();
+}
+
+function inferRunner_(fileName) {
+  return /\.ps1$/i.test(fileName) ? 'iex' : 'bash';
 }
