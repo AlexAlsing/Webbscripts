@@ -3,6 +3,7 @@
 ## Purpose
 This repository contains a single-page dark-mode portal mockup for listing IT convenience scripts.
 
+
 ## Where this is stored
 - The frontend source is stored in this Git repository (`index.html`).
 - Google Apps Script does **not** automatically read files from this repo unless you set up a sync flow (for example with `clasp`).
@@ -15,3 +16,8 @@ This repository contains a single-page dark-mode portal mockup for listing IT co
 - If script endpoints, card contents, or execution environments need to be changed, update `index.html` directly.
 - If you deploy via manual copy/paste, any frontend update in Git must be copied again into the Apps Script project.
 - If you deploy via `clasp`, run your normal `clasp push` flow after Git changes so Apps Script stays in sync.
+=======
+## User adjustments log
+- No manual user-side configuration changes are required for this implementation.
+- If script endpoints, card contents, or execution environments need to be changed, update `index.html` directly.
+
