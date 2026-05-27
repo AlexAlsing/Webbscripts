@@ -14,6 +14,11 @@ function Write-Check {
   Write-Output ("[+] {0}: {1}" -f $Name, $Value)
 }
 
+function Write-Item {
+  param([string]$Value)
+  Write-Output ("- {0}" -f $Value)
+}
+
 function Find-InstalledProgram {
   param([string]$NamePattern)
 
@@ -378,10 +383,9 @@ function Set-ChromePuzzelMicPreferences {
   return [PSCustomObject]$result
 }
 
-Write-Section "Puzzel + Jabra Softphone Check (Windows)"
-Write-Output "Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-Write-Output "Computer: $env:COMPUTERNAME"
-Write-Output "User: $env:USERNAME"
+Write-Section "Puzzel + Jabra Quick Check"
+Write-Item ("Time: {0}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
+Write-Item ("Computer: {0}" -f $env:COMPUTERNAME)
 
 $modelRegex = '(?i)evolve(?:2|3)? ?75'
 $linkRegex = '(?i)jabra link (370|380|390)'
@@ -421,54 +425,51 @@ if ($bluetoothHits) {
   $connectionType = 'Likely wired/cabled (no Bluetooth or Link dongle detected)'
 }
 
-Write-Section "1) Headset model + Bluetooth"
+Write-Section "Status"
 if ($modelHits) {
-  Write-Check "Detected Jabra model(s)" (($modelHits | Select-Object -ExpandProperty Name -Unique) -join '; ')
+  Write-Item ("Jabra model: {0}" -f (($modelHits | Select-Object -ExpandProperty Name -Unique) -join '; '))
 } else {
-  Write-Check "Detected Jabra model(s)" "No listed Evolve 75 variant found right now."
+  Write-Item "Jabra model: none of listed 75 variants detected"
 }
 
 if ($bluetoothHits) {
-  Write-Check "Bluetooth match" (($bluetoothHits | Select-Object -ExpandProperty Name -Unique) -join '; ')
+  Write-Item ("Bluetooth: {0}" -f (($bluetoothHits | Select-Object -ExpandProperty Name -Unique) -join '; '))
 } else {
-  Write-Check "Bluetooth match" "No active Jabra Bluetooth endpoint detected."
+  Write-Item "Bluetooth: no active Jabra Bluetooth endpoint"
 }
 
-Write-Section "2) Connection type"
-Write-Check "Detected connection path" $connectionType
-if ($dongleHits) {
-  Write-Check "Jabra Link dongle(s)" (($dongleHits | Select-Object -ExpandProperty Name -Unique) -join '; ')
-}
+Write-Item ("Connection: {0}" -f $connectionType)
 
-Write-Section "3) Jabra Direct installation"
 $jabraDirect = Find-InstalledProgram -NamePattern '(?i)^jabra direct'
 if ($jabraDirect) {
   $version = if ($jabraDirect.DisplayVersion) { $jabraDirect.DisplayVersion } else { 'unknown version' }
-  Write-Check "Jabra Direct" ("Installed ({0})" -f $version)
+  Write-Item ("Jabra Direct: installed ({0})" -f $version)
 } else {
-  Write-Check "Jabra Direct" "Not installed or not visible in uninstall registry."
+  Write-Item "Jabra Direct: not installed"
 }
 
-Write-Section "4) Selected input/output device"
+Write-Section "Audio"
 $defaults = Get-DefaultAudioByModule
 if ($defaults.Playback -or $defaults.Recording) {
   if ($defaults.Playback) {
-    Write-Check "Default output (Playback)" $defaults.Playback
+    Write-Item ("Output: {0}" -f $defaults.Playback)
   } else {
-    Write-Check "Default output (Playback)" "Not found"
+    Write-Item "Output: not found"
   }
 
   if ($defaults.Recording) {
-    Write-Check "Default input (Recording)" $defaults.Recording
+    Write-Item ("Input: {0}" -f $defaults.Recording)
   } else {
-    Write-Check "Default input (Recording)" "Not found"
+    Write-Item "Input: not found"
   }
 } else {
-  Write-Check "Default output/input" "Could not resolve exact defaults natively. Install AudioDeviceCmdlets for exact values."
-  Write-Check "Current audio endpoints (detected)" (($audioEndpoints | Select-Object -Unique) -join '; ')
+  Write-Item "Default I/O: exact values unavailable (install AudioDeviceCmdlets for exact defaults)"
+  if ($audioEndpoints -and $audioEndpoints.Count -gt 0) {
+    Write-Item ("Endpoints: {0}" -f (($audioEndpoints | Select-Object -Unique) -join '; '))
+  }
 }
 
-Write-Section "5) Built-in laptop mic stuck in Puzzel check"
+Write-Section "Puzzel Mic Risk"
 $builtInMicPattern = '(?i)realtek|internal|built-?in|array|microphone'
 $jabraMicPattern = '(?i)jabra|link'
 
@@ -476,31 +477,28 @@ $likelyBuiltInMic = $audioEndpoints | Where-Object { $_ -match $builtInMicPatter
 $likelyJabraMic = $audioEndpoints | Where-Object { $_ -match $jabraMicPattern }
 
 if ($defaults.Recording -and $defaults.Recording -match $builtInMicPattern -and $likelyJabraMic) {
-  Write-Check "Warning" "Built-in mic appears to be selected while Jabra endpoint exists. This matches common Puzzel issue."
-  Write-Check "Action" "In Windows Sound + Puzzel softphone settings, switch microphone to Jabra Link/Jabra headset."
+  Write-Item "Risk: built-in mic selected while Jabra endpoint exists"
+  Write-Item "Action: switch microphone to Jabra Link in Windows + Puzzel"
 } else {
-  Write-Check "Recording path check" "No clear built-in-mic lock pattern detected."
+  Write-Item "No clear built-in-mic lock pattern"
 }
 
-Write-Section "6) Google (Chrome) selected audio device"
+Write-Section "Chrome (Puzzel)"
 $puzzelDomains = @('puzzel.com', 'agent.puzzel.com')
 $chromePolicy = Get-ChromePolicyStatus
 $chromePuzzel = Get-ChromePuzzelStatus -TargetDomains $puzzelDomains
 
 if ($null -ne $chromePolicy.AudioCaptureAllowed) {
   if ($chromePolicy.AudioCaptureAllowed -eq 1) {
-    Write-Check "Chrome policy AudioCaptureAllowed" "Enabled"
+    Write-Item "Policy AudioCaptureAllowed: enabled"
   } else {
-    Write-Check "Chrome policy AudioCaptureAllowed" ("Value=" + $chromePolicy.AudioCaptureAllowed)
+    Write-Item ("Policy AudioCaptureAllowed: value={0}" -f $chromePolicy.AudioCaptureAllowed)
   }
-  Write-Check "Policy source" (($chromePolicy.AudioCaptureAllowedScope) -join '; ')
 } else {
-  Write-Check "Chrome policy AudioCaptureAllowed" "Not configured"
+  Write-Item "Policy AudioCaptureAllowed: not configured"
 }
 
 if ($chromePolicy.AudioCaptureAllowedUrls -and $chromePolicy.AudioCaptureAllowedUrls.Count -gt 0) {
-  Write-Check "AudioCaptureAllowedUrls" (($chromePolicy.AudioCaptureAllowedUrls) -join '; ')
-  Write-Check "AllowedUrls source" (($chromePolicy.AudioCaptureAllowedUrlsScope) -join '; ')
   $hasPuzzelPolicy = $false
   foreach ($urlPattern in $chromePolicy.AudioCaptureAllowedUrls) {
     if ($urlPattern -match 'puzzel\.com') {
@@ -509,33 +507,27 @@ if ($chromePolicy.AudioCaptureAllowedUrls -and $chromePolicy.AudioCaptureAllowed
     }
   }
   if ($hasPuzzelPolicy) {
-    Write-Check "Puzzel URL policy" "Configured"
+    Write-Item "Puzzel URL policy: configured"
   } else {
-    Write-Check "Puzzel URL policy" "Missing (recommend adding https://[*.]puzzel.com/ and https://agent.puzzel.com/)"
+    Write-Item "Puzzel URL policy: missing"
   }
 } else {
-  Write-Check "AudioCaptureAllowedUrls" "Not configured"
+  Write-Item "AudioCaptureAllowedUrls: not configured"
 }
 
-Write-Check "Chrome profiles checked" ([string]$chromePuzzel.ProfilesChecked)
 if ($chromePuzzel.PuzzelMicRules -and $chromePuzzel.PuzzelMicRules.Count -gt 0) {
-  $rules = $chromePuzzel.PuzzelMicRules | ForEach-Object {
-    "{0} => {1} ({2})" -f $_.Profile, $_.RuleKey, $_.Setting
-  }
-  Write-Check "Puzzel mic rules in Preferences" ($rules -join ' | ')
+  Write-Item ("Puzzel mic rules: found in {0} profile(s)" -f (($chromePuzzel.PuzzelMicRules | Select-Object -ExpandProperty Profile -Unique).Count))
 } else {
-  Write-Check "Puzzel mic rules in Preferences" "No explicit puzzel.com mic rule found in local Chrome profiles."
+  Write-Item "Puzzel mic rules: none found"
 }
 
 if ($chromePuzzel.PreferredInputs -and $chromePuzzel.PreferredInputs.Count -gt 0) {
-  $choices = $chromePuzzel.PreferredInputs | ForEach-Object {
-    "{0} => {1}" -f $_.Profile, $_.FirstChoice
-  }
-  Write-Check "Chrome preferred input ranking (first choice)" ($choices -join ' | ')
+  $firstPreferred = $chromePuzzel.PreferredInputs | Select-Object -First 1
+  Write-Item ("Preferred input: {0}" -f $firstPreferred.FirstChoice)
 } else {
-  Write-Check "Chrome preferred input ranking" "No readable preferred input ranking found."
+  Write-Item "Preferred input: not readable"
 }
-Write-Check "Note" "Live per-tab selected microphone is still not reliably exposed via standard PowerShell."
+Write-Item "Live per-tab mic still cannot be read reliably via standard PowerShell"
 
 Write-Section "7) Guided actions (y/n)"
 
@@ -551,18 +543,18 @@ if ($standardBluetoothHits -and $standardBluetoothHits.Count -gt 0) {
   $answerRemoveBluetooth = Prompt-YesNo -Question 'Do you want to remove bluetooth connection?'
   if ($answerRemoveBluetooth) {
     $btNames = ($standardBluetoothHits | Select-Object -ExpandProperty Name -Unique) -join '; '
-    Write-Check "Bluetooth devices to remove" $btNames
-    Write-Check "Action" "Opening Windows Bluetooth settings. Remove the headset pairing manually there."
+    Write-Item ("Bluetooth devices to remove: {0}" -f $btNames)
+    Write-Item "Opening Bluetooth settings for manual removal"
     try {
       Start-Process 'ms-settings:bluetooth'
     } catch {
-      Write-Check "Action" "Could not open Bluetooth settings automatically. Open Settings > Bluetooth & devices."
+      Write-Item "Could not open Bluetooth settings automatically"
     }
   } else {
-    Write-Check "Bluetooth cleanup" "Skipped by user."
+    Write-Item "Bluetooth cleanup skipped"
   }
 } else {
-  Write-Check "Bluetooth cleanup prompt" "No standard Jabra model on Bluetooth detected, prompt skipped."
+  Write-Item "Bluetooth cleanup prompt skipped (no standard model on Bluetooth)"
 }
 
 $hasJabraLinkEndpoint = $audioEndpoints | Where-Object { $_ -match $linkRegex }
@@ -593,23 +585,23 @@ if ($otherHeadsetSet) {
   if ($answerSwapWindows) {
     $swapResult = Try-SetWindowsDefaultToJabraLink -LinkPattern $linkRegex
     if ($swapResult.Success) {
-      Write-Check "Windows default switch" $swapResult.Message
-      Write-Check "New playback target" $swapResult.Playback
-      Write-Check "New recording target" $swapResult.Recording
+      Write-Item $swapResult.Message
+      Write-Item ("Playback target: {0}" -f $swapResult.Playback)
+      Write-Item ("Recording target: {0}" -f $swapResult.Recording)
     } else {
-      Write-Check "Windows default switch" $swapResult.Message
-      Write-Check "Action" "Opening Sound settings for manual switch to Jabra Link."
+      Write-Item $swapResult.Message
+      Write-Item "Opening Sound settings for manual switch"
       try {
         Start-Process 'ms-settings:sound'
       } catch {
-        Write-Check "Action" "Could not open Sound settings automatically."
+        Write-Item "Could not open Sound settings automatically"
       }
     }
   } else {
-    Write-Check "Windows default switch" "Skipped by user."
+    Write-Item "Windows default switch skipped"
   }
 } else {
-  Write-Check "Swap prompt" "No clear non-Jabra default detected, prompt skipped."
+  Write-Item "Swap prompt skipped (no clear non-Jabra default)"
 }
 
 $answerPuzzelSite = Prompt-YesNo -Question 'Do you want to set "Jabra link xxx" as prefered input/output on agent.puzzel.com'
@@ -620,19 +612,19 @@ if ($answerPuzzelSite) {
   }
 
   $chromeSet = Set-ChromePuzzelMicPreferences -PreferredInputName $selectedJabraInput
-  Write-Check "Chrome update result" $chromeSet.Message
+  Write-Item $chromeSet.Message
   if ($chromeSet.ProfilesUpdated -and $chromeSet.ProfilesUpdated.Count -gt 0) {
-    Write-Check "Profiles updated" (($chromeSet.ProfilesUpdated) -join '; ')
+    Write-Item ("Profiles updated: {0}" -f (($chromeSet.ProfilesUpdated) -join '; '))
   }
   if ($chromeSet.ProfilesFailed -and $chromeSet.ProfilesFailed.Count -gt 0) {
-    Write-Check "Profiles failed" (($chromeSet.ProfilesFailed) -join '; ')
+    Write-Item ("Profiles failed: {0}" -f (($chromeSet.ProfilesFailed) -join '; '))
   }
   if ($preferredJabraOutputCandidate) {
-    Write-Check "Preferred Jabra output candidate" $preferredJabraOutputCandidate
+    Write-Item ("Preferred Jabra output candidate: {0}" -f $preferredJabraOutputCandidate)
   }
-  Write-Check "Note" "Chrome must be fully restarted after this change. Then verify device selection inside agent.puzzel.com call settings."
+  Write-Item "Restart Chrome, then verify device in agent.puzzel.com call settings"
 } else {
-  Write-Check "agent.puzzel.com preference update" "Skipped by user."
+  Write-Item "agent.puzzel.com preference update skipped"
 }
 
 Write-Section "Done"
